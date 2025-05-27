@@ -1,70 +1,101 @@
-from flask import Flask, jsonify, request, abort
+from flask import Flask, request, jsonify, abort
+from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# In-memory "database"
-tasks = []
-next_id = 1
+# Configure the database
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
 
+# Define the Task model
+class Task(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(80), nullable=False)
+    completed = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "completed": self.completed
+        }
+
+
+# Initialize the database
+with app.app_context():
+    db.create_all()
+
+
+# Routes
 @app.route("/")
 def home():
     return "Flask server is running!"
 
 
-# Get all tasks
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
-    return jsonify(tasks), 200
+    tasks = Task.query.all()
+    return jsonify([task.to_dict() for task in tasks]), 200
 
 
-# Get single task by ID
 @app.route("/tasks/<int:task_id>", methods=["GET"])
 def get_task(task_id):
-    task = next((t for t in tasks if t["id"] == task_id), None)
+    task = Task.query.get(task_id)
     if task is None:
         abort(404)
-    return jsonify(task), 200
+    return jsonify(task.to_dict()), 200
 
 
-# Create a new task
 @app.route("/tasks", methods=["POST"])
 def create_task():
-    global next_id
     data = request.get_json()
     if not data or "title" not in data:
         abort(400, "Missing 'title'")
-    task = {
-        "id": next_id,
-        "title": data["title"],
-        "completed": data.get("completed", False)
-    }
-    tasks.append(task)
-    next_id += 1
-    print(f"Task added: {task}")  # ✅ Add this line
-    return jsonify(task), 201
+
+    task = Task(title=data["title"], completed=data.get("completed", False))
+    db.session.add(task)
+    db.session.commit()
+
+    print(f"Task added: {task.to_dict()}")
+    return jsonify(task.to_dict()), 201
 
 
-# Update a task
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
-    data = request.get_json()
-    task = next((t for t in tasks if t["id"] == task_id), None)
+    task = Task.query.get(task_id)
     if task is None:
         abort(404)
-    task["title"] = data.get("title", task["title"])
-    task["completed"] = data.get("completed", task["completed"])
-    return jsonify(task), 200
+
+    data = request.get_json()
+    if "title" in data:
+        task.title = data["title"]
+    if "completed" in data:
+        task.completed = data["completed"]
+
+    db.session.commit()
+    return jsonify(task.to_dict()), 200
 
 
-# Delete a task
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
-    global tasks
-    tasks = [t for t in tasks if t["id"] != task_id]
+    task = Task.query.get(task_id)
+    if task is None:
+        abort(404)
+
+    db.session.delete(task)
+    db.session.commit()
     return jsonify({"message": "Task deleted"}), 200
 
+
+# Run the server
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5001)

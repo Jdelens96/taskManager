@@ -1,4 +1,4 @@
-Overview
+Overview:
 Task Manager is a full-stack web application designed to manage tasks with a clean UI and powerful backend. It demonstrates a well-rounded grasp of modern development tools and best practices, with a Python (Flask) backend and a JavaScript (React) frontend. The project is deployed on an AWS EC2 instance, simulating a real-world deployment environment.
 
 This application allows users to:
